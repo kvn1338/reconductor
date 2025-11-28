@@ -25,6 +25,7 @@ class ScanStage(Enum):
     NO_PORTS_FOUND = "no_ports_found"
     SERVICE_SCAN = "service_scan"
     SERVICE_SCAN_COMPLETE = "service_scan_complete"
+    NUCLEI_SCAN = "nuclei_scan"  # Logical stage for queuing nuclei scans
     NUCLEI_QUEUED = "nuclei_queued"
     NUCLEI_RUNNING = "nuclei_running"
     NUCLEI_COMPLETE = "nuclei_complete"
