@@ -37,12 +37,16 @@ Examples:
   sudo %(prog)s --max-nmap 2 --max-nuclei 2 --top-ports 1000 targets.txt
   sudo %(prog)s --resume --output-dir results targets.txt
   sudo %(prog)s --timeout 120 --top-ports 576 targets.txt
+  sudo %(prog)s --hosts-only targets.txt
+  sudo %(prog)s --ports-only --top-ports 100 targets.txt
 
 Notes:
   - Requires root/sudo for SYN scans (-sS)
   - Automatically splits subnets larger than /24 into /24 chunks
   - State is automatically saved for resumability
   - Top ports: 576 covers ~90%% of services, 1000 is default
+  - Use --hosts-only to only discover live hosts (fast)
+  - Use --ports-only to discover hosts + ports without service enumeration
   - See https://nmap.org/book/performance-port-selection.html
         """,
     )
@@ -130,6 +134,18 @@ Notes:
         help="Resume from previous state (load state file and continue incomplete scans)",
     )
 
+    # Scan mode options
+    parser.add_argument(
+        "--hosts-only",
+        action="store_true",
+        help="Only perform host discovery (skip port and service scans)",
+    )
+    parser.add_argument(
+        "--ports-only",
+        action="store_true",
+        help="Perform host discovery and port scans only (skip service enumeration and nuclei)",
+    )
+
     # Advanced options
     parser.add_argument(
         "--no-split",
@@ -148,6 +164,8 @@ Notes:
         parser.error("--timeout must be at least 1 minute")
     if args.top_ports < 1:
         parser.error("--top-ports must be at least 1")
+    if args.hosts_only and args.ports_only:
+        parser.error("Cannot use both --hosts-only and --ports-only")
 
     return args
 
@@ -272,6 +290,8 @@ async def main():
     config = ScanConfig(
         targets_file=args.targets_file,
         output_dir=args.output_dir,
+        hosts_only=args.hosts_only,
+        ports_only=args.ports_only,
         max_nmap_workers=args.max_nmap,
         max_nuclei_workers=args.max_nuclei,
         host_discovery_timeout=args.host_timeout,
@@ -290,6 +310,15 @@ async def main():
 
     # Print configuration
     print_header("Scan Configuration", char="-", width=70)
+
+    # Print scan mode
+    if config.hosts_only:
+        print("Scan mode: Host Discovery ONLY (fast)")
+    elif config.ports_only:
+        print("Scan mode: Hosts + Ports ONLY (no service enumeration)")
+    else:
+        print("Scan mode: Full scan (hosts + ports + services + nuclei)")
+
     print(f"Output directory: {config.output_dir}")
     print(f"State file: {config.state_file}")
     print(

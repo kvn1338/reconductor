@@ -138,6 +138,11 @@ class NmapWorker(ScanWorker):
         self.state.update_stage(target, ScanStage.HOST_DISCOVERY_COMPLETE)
         print(f"[{target}] Host discovery complete")
 
+        # If hosts-only mode, mark target as complete
+        if self.config.hosts_only:
+            self.state.update_stage(target, ScanStage.COMPLETE)
+            print(f"[{target}] Hosts-only mode: Marking complete")
+
     async def _do_port_discovery(self, target: str):
         """Perform port discovery scan (fast, no version detection)"""
         target_state = self.state.get_target_state(target)
@@ -203,6 +208,11 @@ class NmapWorker(ScanWorker):
 
         self.state.update_stage(target, ScanStage.PORT_DISCOVERY_COMPLETE)
         print(f"[{target}] Port discovery complete")
+
+        # If ports-only mode, mark target as complete
+        if self.config.ports_only:
+            self.state.update_stage(target, ScanStage.COMPLETE)
+            print(f"[{target}] Ports-only mode: Marking complete")
 
     async def _do_service_scan(self, target: str):
         """Perform detailed service scan with version detection"""
@@ -427,31 +437,39 @@ class ScanOrchestrator:
                 await self.nmap_queue.put({"target": target, "stage": "host_discovery"})
                 self.state.mark_queued(target)
 
-            # Feed nmap queue with port discovery tasks
-            ready_for_port_discovery = self.state.get_targets_ready_for_stage(
-                ScanStage.PORT_DISCOVERY
-            )
-            for target in ready_for_port_discovery:
-                await self.nmap_queue.put({"target": target, "stage": "port_discovery"})
-                self.state.mark_queued(target)
+            # Only queue further stages if not in hosts-only mode
+            if not self.config.hosts_only:
+                # Feed nmap queue with port discovery tasks
+                ready_for_port_discovery = self.state.get_targets_ready_for_stage(
+                    ScanStage.PORT_DISCOVERY
+                )
+                for target in ready_for_port_discovery:
+                    await self.nmap_queue.put(
+                        {"target": target, "stage": "port_discovery"}
+                    )
+                    self.state.mark_queued(target)
 
-            # Feed nmap queue with service scan tasks
-            ready_for_service_scan = self.state.get_targets_ready_for_stage(
-                ScanStage.SERVICE_SCAN
-            )
-            for target in ready_for_service_scan:
-                await self.nmap_queue.put({"target": target, "stage": "service_scan"})
-                self.state.mark_queued(target)
+            # Only queue service scans and nuclei if not in ports-only or hosts-only mode
+            if not self.config.ports_only and not self.config.hosts_only:
+                # Feed nmap queue with service scan tasks
+                ready_for_service_scan = self.state.get_targets_ready_for_stage(
+                    ScanStage.SERVICE_SCAN
+                )
+                for target in ready_for_service_scan:
+                    await self.nmap_queue.put(
+                        {"target": target, "stage": "service_scan"}
+                    )
+                    self.state.mark_queued(target)
 
-            # Feed nuclei queue (can run as soon as host discovery is complete)
-            ready_for_nuclei = self.state.get_targets_ready_for_stage(
-                ScanStage.NUCLEI_SCAN
-            )
-            for target in ready_for_nuclei:
-                await self.nuclei_queue.put({"target": target})
-                self.state.mark_queued(target)
-                # Mark as queued, NOT complete - nuclei will update status when done
-                self.state.set_nuclei_status(target, ScanStage.NUCLEI_QUEUED.value)
+                # Feed nuclei queue (can run as soon as port discovery is complete)
+                ready_for_nuclei = self.state.get_targets_ready_for_stage(
+                    ScanStage.NUCLEI_SCAN
+                )
+                for target in ready_for_nuclei:
+                    await self.nuclei_queue.put({"target": target})
+                    self.state.mark_queued(target)
+                    # Mark as queued, NOT complete - nuclei will update status when done
+                    self.state.set_nuclei_status(target, ScanStage.NUCLEI_QUEUED.value)
 
             # Wait a bit before checking again
             await asyncio.sleep(2)

@@ -80,6 +80,19 @@ sudo ./reconductor.py --top-ports 576 my_targets.txt
 sudo ./reconductor.py --max-nmap 2 --max-nuclei 2 my_targets.txt
 ```
 
+### Scan Mode Options
+
+```bash
+# Host discovery only (fastest - just find what's alive)
+sudo ./reconductor.py --hosts-only my_targets.txt
+
+# Host discovery + port scanning (no service enumeration)
+sudo ./reconductor.py --ports-only --top-ports 100 my_targets.txt
+
+# Full scan with all stages (default)
+sudo ./reconductor.py my_targets.txt
+```
+
 ### Resume Interrupted Scan
 
 ```bash
@@ -227,14 +240,23 @@ sudo ./reconductor.py --resume my_targets.txt
 
 ## Tips & Tricks
 
-### 1. Custom Output Directory
+### 1. Quick Host Discovery Sweep
+
+```bash
+# Fast sweep to find live hosts only (no port scanning)
+sudo ./reconductor.py --hosts-only --max-nmap 3 large_network.txt
+
+# Results in: scan_results/<target>/ips.txt
+```
+
+### 2. Organize Scans by Date
 
 ```bash
 # Keep scans organized by date
 sudo ./reconductor.py --output-dir scans/$(date +%Y-%m-%d) my_targets.txt
 ```
 
-### 2. Scan Specific Subnets from Large List
+### 3. Scan Specific Subnets from Large List
 
 ```bash
 # Only scan first 3 targets
@@ -242,7 +264,7 @@ head -3 large_targets.txt > small_batch.txt
 sudo ./reconductor.py small_batch.txt
 ```
 
-### 3. Combine Multiple Target Lists
+### 4. Combine Multiple Target Lists
 
 ```bash
 cat list1.txt list2.txt list3.txt > combined.txt
@@ -250,7 +272,7 @@ sort -u combined.txt > unique_targets.txt
 sudo ./reconductor.py unique_targets.txt
 ```
 
-### 4. Extract All Live Hosts
+### 5. Extract All Live Hosts
 
 ```bash
 # From all scanned subnets

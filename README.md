@@ -105,6 +105,19 @@ sudo ./reconductor.py --max-nmap 2 --max-nuclei 2 targets.txt
 sudo ./reconductor.py --max-nmap 4 --max-nuclei 3 targets.txt
 ```
 
+### Scan Mode Options
+
+```bash
+# Host discovery only (fastest - just find what's alive)
+sudo ./reconductor.py --hosts-only targets.txt
+
+# Host discovery + port scanning only (skip service enumeration)
+sudo ./reconductor.py --ports-only --top-ports 100 targets.txt
+
+# Full scan with all stages (default)
+sudo ./reconductor.py targets.txt
+```
+
 ### Customizing Scans
 
 ```bash
@@ -330,20 +343,6 @@ nuclei \
   -markdown-export nuclei/ \
   -json-export nuclei/output.json
 ```
-
-## Comparison to scanner.py (Prototype)
-
-| Feature | scanner.py | reconductor |
-|---------|-----------|----------|
-| Architecture | Monolithic | Modular (5 files) |
-| State Management | Simple done file | Full state tracking (JSON) |
-| Resumability | Basic (skip done targets) | Advanced (resume at any stage) |
-| Parallelization | Semaphore-based | Queue + worker pool |
-| nmap Strategy | 2 scans (discovery + ports) | 3 scans (discovery, ports, services) |
-| Port Discovery | Slow (with version detect) | Fast (no banners) + detailed later |
-| Subnet Handling | User-defined | Auto-split to /24 |
-| Progress Tracking | Print statements | State file + statistics |
-| Error Recovery | Limited | Per-stage tracking |
 
 ## Contributing
 

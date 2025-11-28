@@ -17,6 +17,10 @@ class ScanConfig:
     output_dir: str = "scan_results"
     state_file: str = None  # Will be auto-generated if None
 
+    # Scan mode options
+    hosts_only: bool = False  # Stop after host discovery
+    ports_only: bool = False  # Stop after port discovery (no service scan)
+
     # Parallelism
     max_nmap_workers: int = 1
     max_nuclei_workers: int = 1
@@ -48,6 +52,10 @@ class ScanConfig:
         if self.state_file is None:
             targets_basename = Path(self.targets_file).stem
             self.state_file = f"{self.output_dir}/{targets_basename}_state.json"
+
+        # Validate scan mode flags
+        if self.hosts_only and self.ports_only:
+            raise ValueError("Cannot use both --hosts-only and --ports-only")
 
         # Validate parameters
         if not 1 <= self.max_nmap_workers <= 100:
