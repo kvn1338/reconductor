@@ -1,6 +1,8 @@
-# reconductor - conducting your recon
+# reconductor
 
-A modular, queue-based network scanner that efficiently parallelizes nmap and nuclei scans with automatic state management and resumability.
+> **Orchestrate your reconnaissance like a symphony** 🎵
+
+Fast, parallel network scanning with nmap and nuclei. Automatically resumes, intelligently queues, never loses progress.
 
 ## Features
 
@@ -101,7 +103,7 @@ sudo ./reconductor.py --output-dir results targets.txt
 # Run 2 nmap workers and 2 nuclei workers concurrently
 sudo ./reconductor.py --max-nmap 2 --max-nuclei 2 targets.txt
 
-# High-performance mode (beefy hardware)
+# Higher performance mode
 sudo ./reconductor.py --max-nmap 4 --max-nuclei 3 targets.txt
 ```
 
