@@ -2,11 +2,7 @@
 
 > **Orchestrate your reconnaissance like a symphony** 🎵
 
-Fast, parallel network scanning with nmap and nuclei. Automatically resumes, intelligently queues, never loses progress.
-
-## Origin
-
-What started as a simple shell script to streamline scanning large networks in an efficient manner grew into a robust, production-ready reconnaissance orchestration tool. The core mission remains the same: make large-scale network scanning fast, reliable, and resumable.
+Fast, parallel network scanning with nmap and nuclei. Automatically resumes, queues and avoids losing progress. This started as a simple shell script to streamline scanning large networks in an efficient manner and grew into this over time...
 
 ## Features
 
@@ -141,8 +137,6 @@ scan_results/
 ```
 
 ## Architecture
-
-For detailed architecture information, parallelism strategy, and technical implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### High-Level Design
 
