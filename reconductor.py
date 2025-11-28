@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import asyncio
+import signal
 import sys
 from pathlib import Path
 
@@ -265,11 +266,35 @@ def initialize_state(config: ScanConfig, targets: list) -> ScanState:
     return state
 
 
+# Global reference for signal handler
+orchestrator_instance = None
+state_instance = None
+
+
+def signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT for graceful shutdown"""
+    sig_name = signal.Signals(signum).name
+    print(f"\n\n🛑 Received {sig_name}, shutting down gracefully...")
+
+    # Save state before exiting
+    if state_instance:
+        print("💾 Saving state...")
+        state_instance.save()
+        state_instance.print_summary()
+
+    print("✅ Shutdown complete. You can resume with --resume flag")
+    sys.exit(128 + signum)
+
+
 async def main():
     """Main entry point"""
     print_header("reconductor - Network Reconnaissance Conductor", char="=", width=70)
 
     args = parse_arguments()
+
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
     # Check for root privileges
     if not check_root_privileges():
@@ -308,6 +333,10 @@ async def main():
     # Initialize state
     state = initialize_state(config, targets)
 
+    # Store global reference for signal handler
+    global state_instance
+    state_instance = state
+
     # Print configuration
     print_header("Scan Configuration", char="-", width=70)
 
@@ -337,14 +366,20 @@ async def main():
     # Create and start orchestrator
     orchestrator = ScanOrchestrator(config, state)
 
+    # Store global reference for signal handler
+    global orchestrator_instance
+    orchestrator_instance = orchestrator
+
     print_header("Starting Scan", char="=", width=70)
     print()
 
     try:
         await orchestrator.start()
     except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
         print("\n\n⚠️  Interrupted by user (Ctrl+C)")
-        print("State has been saved. You can resume with --resume flag")
+        state.save()
+        print("💾 State has been saved. You can resume with --resume flag")
         sys.exit(130)
     except Exception as e:
         print(f"\n\n❌ Fatal error: {e}")
@@ -356,6 +391,11 @@ async def main():
     # Print final summary
     print()
     print_header("Scan Complete", char="=", width=70)
+
+    # Print detailed scan summary with host/port counts
+    state.print_scan_summary()
+
+    # Print detailed state breakdown
     state.print_summary()
 
     stats = state.get_statistics()

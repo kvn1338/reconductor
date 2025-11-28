@@ -57,6 +57,25 @@ class ScanConfig:
         if self.hosts_only and self.ports_only:
             raise ValueError("Cannot use both --hosts-only and --ports-only")
 
+        # Validate output directory
+        output_path = Path(self.output_dir)
+        if output_path.exists() and not output_path.is_dir():
+            raise ValueError(
+                f"output_dir '{self.output_dir}' exists but is not a directory"
+            )
+
+        # Validate state file path
+        state_path = Path(self.state_file)
+        if state_path.exists() and not state_path.is_file():
+            raise ValueError(f"state_file '{self.state_file}' exists but is not a file")
+
+        # Ensure state file parent directory is valid
+        state_parent = state_path.parent
+        if state_parent.exists() and not state_parent.is_dir():
+            raise ValueError(
+                f"state_file parent path '{state_parent}' is not a directory"
+            )
+
         # Validate parameters
         if not 1 <= self.max_nmap_workers <= 100:
             raise ValueError("max_nmap_workers must be between 1 and 100")

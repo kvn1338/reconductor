@@ -1,0 +1,83 @@
+[run]
+# Coverage configuration for reconductor
+
+# Files to include in coverage
+source = .
+
+# Files/directories to omit from coverage
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */virtualenv/*
+    */.venv/*
+    */setup.py
+    */conftest.py
+
+# Branch coverage (not just line coverage)
+branch = True
+
+# Measure coverage in multiprocessing
+parallel = False
+
+[report]
+# Output options for coverage report
+
+# Precision for coverage percentages
+precision = 2
+
+# Show missing lines in report
+show_missing = True
+
+# Skip covered files in report (show only incomplete)
+skip_covered = False
+
+# Skip empty files
+skip_empty = True
+
+# Sort report by
+sort = Cover
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug code
+    def __repr__
+    def __str__
+
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run
+    if 0:
+    if False:
+    if __name__ == .__main__.:
+
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Don't complain about type checking blocks
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Don't complain about pass statements
+    pass
+
+[html]
+# HTML report options
+directory = htmlcov
+title = reconductor Coverage Report
+
+[xml]
+# XML report options (for CI/CD)
+output = coverage.xml
+
+[json]
+# JSON report options
+output = coverage.json
+show_contexts = True

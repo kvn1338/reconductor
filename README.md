@@ -4,68 +4,20 @@
 
 Fast, parallel network scanning with nmap and nuclei. Automatically resumes, intelligently queues, never loses progress.
 
+## Origin
+
+What started as a simple shell script to streamline scanning large networks in an efficient manner grew into a robust, production-ready reconnaissance orchestration tool. The core mission remains the same: make large-scale network scanning fast, reliable, and resumable.
+
 ## Features
 
 - 🚀 **Parallel Execution**: Run multiple nmap and nuclei scans concurrently
 - 💾 **Automatic State Management**: Resume interrupted scans from where they left off
 - 📦 **Smart Subnet Splitting**: Automatically splits large subnets into /24 chunks for better parallelization
-- 🎯 **Optimized nmap Workflow**: 
-  1. Fast host discovery
-  2. Quick port discovery (no banners)
-  3. Detailed service scan only on open ports
+- 🎯 **Optimized nmap Workflow**: Fast host discovery → Quick port discovery → Detailed service scan
 - 🔄 **Queue-Based Architecture**: Efficient task distribution across workers
 - 📊 **Progress Tracking**: Real-time visibility into scan progress
 
-## Architecture
-
-### Modular Design
-
-```
-reconductor/
-├── reconductor.py    # Main entry point and CLI
-├── config.py      # Configuration and command templates
-├── state.py       # State management and persistence
-├── scanner.py     # Worker classes and orchestration
-└── utils.py       # Utility functions (IP validation, parsing, etc.)
-```
-
-### Queue-Based Workflow
-
-```
-Input Targets
-     ↓
-Split into /24 subnets
-     ↓
-┌────────────────────────────────────────┐
-│         Scan Orchestrator              │
-│  (Manages queues and worker pools)     │
-└────────────────────────────────────────┘
-     ↓                    ↓
-┌─────────────┐    ┌──────────────┐
-│ Nmap Queue  │    │ Nuclei Queue │
-└─────────────┘    └──────────────┘
-     ↓                    ↓
-Multiple Workers    Multiple Workers
-(max-nmap)          (max-nuclei)
-```
-
-### Scan Stages
-
-Each target progresses through these stages:
-
-1. **PENDING** → Initial state
-2. **HOST_DISCOVERY** → nmap host discovery scan
-3. **HOST_DISCOVERY_COMPLETE** → Live hosts identified
-4. **PORT_DISCOVERY** → Fast port scan (no version detection)
-5. **PORT_DISCOVERY_COMPLETE** → Open ports identified
-6. **SERVICE_SCAN** → Detailed service/version scan on open ports
-7. **SERVICE_SCAN_COMPLETE** → Services identified
-8. **NUCLEI_SCAN** → Vulnerability scanning (runs in parallel with service scan)
-9. **COMPLETE** → All scans finished
-
-Nuclei scans run in parallel with port/service discovery after host discovery completes.
-
-## Installation
+## Quick Start
 
 ### Requirements
 
@@ -74,97 +26,103 @@ Nuclei scans run in parallel with port/service discovery after host discovery co
 - nuclei (optional, for vulnerability scanning)
 - Root/sudo access (for SYN scans)
 
-### Setup
+### Installation
 
 ```bash
-cd reconductor
-chmod +x reconductor.py
+# Install Python dependencies (for testing)
+pip install -r requirements.txt
 
-# Verify dependencies
-which nmap
-which nuclei
+# Or install manually
+pip install pytest pytest-cov pytest-asyncio
 ```
-
-## Usage
 
 ### Basic Usage
 
 ```bash
-# Simple scan with defaults
+# Create targets file
+cat > targets.txt << EOF
+192.168.1.0/24
+10.0.0.0/16
+EOF
+
+# Run scan
 sudo ./reconductor.py targets.txt
 
-# Specify output directory
-sudo ./reconductor.py --output-dir results targets.txt
+# Check results
+ls -la scan_results/
 ```
 
-### Parallelization
+### Common Scenarios
 
 ```bash
-# Run 2 nmap workers and 2 nuclei workers concurrently
+# Fast scan with 2 parallel workers
 sudo ./reconductor.py --max-nmap 2 --max-nuclei 2 targets.txt
 
-# Higher performance mode
-sudo ./reconductor.py --max-nmap 4 --max-nuclei 3 targets.txt
-```
-
-### Scan Mode Options
-
-```bash
 # Host discovery only (fastest - just find what's alive)
 sudo ./reconductor.py --hosts-only targets.txt
 
-# Host discovery + port scanning only (skip service enumeration)
-sudo ./reconductor.py --ports-only --top-ports 100 targets.txt
+# Resume interrupted scan
+sudo ./reconductor.py --resume targets.txt
 
-# Full scan with all stages (default)
-sudo ./reconductor.py targets.txt
-```
+# Custom output directory
+sudo ./reconductor.py --output-dir my_scan targets.txt
 
-### Customizing Scans
-
-```bash
-# Fast scan: 576 ports (~90% coverage)
+# Fast scan with fewer ports (576 = ~90% coverage)
 sudo ./reconductor.py --top-ports 576 targets.txt
-
-# Increase scan speed (more aggressive)
-sudo ./reconductor.py --min-rate 1000 --host-min-rate 2000 targets.txt
-
-# Adjust timeouts (in minutes)
-sudo ./reconductor.py --timeout 120 --host-timeout 60 targets.txt
-
-# More aggressive version detection
-sudo ./reconductor.py --version-intensity 5 targets.txt
 ```
 
-### Resume Interrupted Scans
+## Scan Modes
 
-```bash
-# Resume from previous state
-sudo ./reconductor.py --resume --output-dir results targets.txt
+**Full Scan (default)**: Host discovery → Port scanning → Service detection → Nuclei vulnerability scan
 
-# State is automatically saved, just re-run with --resume
+**Ports Only**: `--ports-only` - Skip service enumeration, just find open ports
+
+**Hosts Only**: `--hosts-only` - Just discover live hosts (fastest)
+
+## Output Structure
+
+```
+scan_results/
+├── targets_state.json              # State file for resumability
+└── 192_168_1_0-24/                # Per-target directory
+    ├── ips.txt                    # Live hosts
+    ├── hosts.nmap                 # Host discovery results
+    ├── open-ports.xml             # Port scan results
+    ├── service_scan.nmap          # Service/version detection
+    └── nuclei/                    # Vulnerability findings
+        └── output.json
 ```
 
-### Advanced Options
+## Key Options
+
+### Performance
 
 ```bash
-# Don't split large subnets (not recommended)
-sudo ./reconductor.py --no-split targets.txt
+--max-nmap N          # Number of parallel nmap workers (default: 1)
+--max-nuclei N        # Number of parallel nuclei workers (default: 1)
+--top-ports N         # Number of ports to scan (default: 1000)
+--min-rate N          # Min packets/sec for port scans (default: 500)
+--host-min-rate N     # Min packets/sec for host discovery (default: 1000)
+```
 
-# Combine options
-sudo ./reconductor.py \
-  --max-nmap 3 \
-  --max-nuclei 2 \
-  --top-ports 1000 \
-  --timeout 90 \
-  --min-rate 750 \
-  --output-dir my_scan \
-  targets.txt
+### Timeouts
+
+```bash
+--timeout N           # Nmap scan timeout in minutes (default: 60)
+--host-timeout N      # Host discovery timeout in minutes (default: 30)
+```
+
+### Scan Control
+
+```bash
+--hosts-only          # Only perform host discovery
+--ports-only          # Stop after port scanning (no service detection)
+--version-intensity N # nmap version detection intensity 0-9 (default: 2)
+--no-split            # Don't split large subnets into /24s
+--resume              # Resume from previous state
 ```
 
 ## Targets File Format
-
-Create a text file with one target per line:
 
 ```
 # Single IPs
@@ -182,179 +140,118 @@ Create a text file with one target per line:
 # 192.168.2.0/24  <- this line is ignored
 ```
 
-## Output Structure
+## Architecture
+
+For detailed architecture information, parallelism strategy, and technical implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+### High-Level Design
 
 ```
-scan_results/
-├── targets_state.json              # State file for resumability
-├── 10_0_0_0-24/                   # Per-target directory
-│   ├── hosts.nmap                 # Host discovery results
-│   ├── hosts.gnmap
-│   ├── hosts.xml
-│   ├── ips.txt                    # Live hosts list
-│   ├── open-ports.xml             # Port discovery results
-│   ├── service_scan.nmap          # Service scan results
-│   ├── service_scan.gnmap
-│   ├── service_scan.xml
-│   └── nuclei/                    # Nuclei results
-│       ├── output.json
-│       └── *.md                   # Markdown reports
-├── 10_0_1_0-24/
-│   └── ...
-└── ...
+Input Targets → Split into /24s → Queue-based orchestrator
+                                          ↓
+                    ┌─────────────────────┴──────────────────────┐
+                    ↓                                             ↓
+              Nmap Workers                                  Nuclei Workers
+         (parallel host/port/service)                    (parallel vuln scan)
+                    ↓                                             ↓
+              Per-target output                          Per-target output
 ```
 
-## State File
+### Scan Flow
 
-The state file (`*_state.json`) tracks:
-- Current stage of each target
-- Live hosts discovered
-- Open ports found
-- Timestamps
-- Error messages
+1. **Host Discovery** - Find live hosts (fast)
+2. **Port Discovery** - Identify open ports (no banners)
+3. **Service Scan** - Deep service/version detection (only on open ports)
+4. **Nuclei Scan** - Vulnerability scanning (after service scan completes)
 
-This enables:
-- Resuming interrupted scans
-- Progress tracking
-- Audit trail
-
-Example state:
-
-```json
-{
-  "metadata": {
-    "created_at": "2024-11-27T10:00:00.123456",
-    "last_updated": "2024-11-27T11:30:00.654321",
-    "version": "1.0"
-  },
-  "targets": {
-    "10.0.0.0/24": {
-      "target": "10.0.0.0/24",
-      "stage": "service_scan_complete",
-      "directory": "scan_results/10_0_0_0-24",
-      "live_hosts": ["10.0.0.1", "10.0.0.10", "10.0.0.50"],
-      "open_ports": "22,80,443",
-      "started_at": "2024-11-27T10:00:00.123456",
-      "completed_at": "2024-11-27T11:30:00.654321",
-      "error": null
-    }
-  }
-}
-```
+Each stage is tracked in state file for resumability.
 
 ## Performance Tips
 
-### Optimizing for Speed
+### Fast Scanning
 
-1. **Increase parallelization**: `--max-nmap 3 --max-nuclei 2`
-2. **Reduce ports scanned**: `--top-ports 576` (90% coverage)
-3. **Increase packet rate**: `--min-rate 1000`
-4. **Lower version intensity**: `--version-intensity 0` (disables version detection)
+```bash
+# Aggressive scanning for speed
+sudo ./reconductor.py \
+  --max-nmap 3 \
+  --max-nuclei 2 \
+  --top-ports 576 \
+  --min-rate 1000 \
+  targets.txt
+```
 
-### Optimizing for Accuracy
+### Accurate Scanning
 
-1. **More ports**: `--top-ports 5000`
-2. **Higher version intensity**: `--version-intensity 7`
-3. **Longer timeouts**: `--timeout 120`
-4. **Conservative rate**: `--min-rate 100` (less likely to be rate-limited)
+```bash
+# Conservative scanning for accuracy
+sudo ./reconductor.py \
+  --top-ports 5000 \
+  --version-intensity 7 \
+  --timeout 120 \
+  --min-rate 100 \
+  targets.txt
+```
 
-### Resource Considerations
+### Large Networks
 
-- **CPU**: Each nmap worker uses 1-2 cores
-- **Memory**: ~100-500MB per nmap worker
-- **Network**: Depends on `--min-rate` setting
-- **Disk**: ~1-10MB per /24 subnet scanned
+```bash
+# Optimized for /16 or larger
+sudo ./reconductor.py \
+  --max-nmap 3 \
+  --timeout 120 \
+  --host-timeout 60 \
+  large_targets.txt
+```
 
 ## Troubleshooting
 
-### "Not running as root" Warning
+**Scan too slow?** Increase `--max-nmap`, reduce `--top-ports`, or increase `--min-rate`
 
-SYN scans (`-sS`) require root. Without root, nmap falls back to TCP connect scans which are:
-- Slower
-- More detectable
-- Less reliable
+**Timeouts?** Increase `--timeout` and `--host-timeout` values
 
-Solution: Run with `sudo`
+**Resume not working?** Verify `--output-dir` matches previous scan and state file exists
 
-### Scan Hangs or Times Out
+**Need root?** Yes, for SYN scans (`-sS`). Without sudo, falls back to slower TCP connect scans
 
-1. Increase timeouts: `--timeout 120`
-2. Reduce rate: `--min-rate 100`
-3. Check network connectivity
-4. Check firewall rules
-
-### "Command timed out" Errors
-
-This is normal for large subnets or slow networks. The scan continues with other targets. To adjust:
+## Monitoring Progress
 
 ```bash
-# Increase timeout for large networks
-sudo ./reconductor.py --timeout 180 --host-timeout 90 targets.txt
+# Watch state file updates
+watch -n 5 'cat scan_results/*_state.json | jq .metadata'
+
+# Check stage distribution
+cat scan_results/*_state.json | \
+  jq -r '.targets | to_entries[] | .value.stage' | sort | uniq -c
+
+# Find completed targets
+cat scan_results/*_state.json | \
+  jq -r '.targets | to_entries[] | select(.value.stage == "complete") | .key'
 ```
 
-### Resume Not Working
-
-Check that:
-1. `--output-dir` matches previous scan
-2. State file exists: `scan_results/*_state.json`
-3. File permissions are correct
-
-### High Memory Usage
-
-Reduce parallelization:
+## Testing
 
 ```bash
-sudo ./reconductor.py --max-nmap 1 --max-nuclei 1 targets.txt
-```
+# Install test dependencies first
+pip install -r requirements.txt
 
-## Nmap Command Details
+# Run test suite
+pytest
 
-### 1. Host Discovery
-```bash
-nmap -vvv -n -sn -PE -PM -PP \
-  --min-hostgroup 512 \
-  --min-rate 1000 \
-  --max-retries 3 \
-  --max-rtt-timeout 200ms \
-  -oA hosts TARGET
-```
+# Or with unittest (no dependencies needed)
+python3 -m unittest discover tests/
 
-### 2. Port Discovery (Fast)
-```bash
-nmap -n -Pn -sS \
-  --min-rate 500 \
-  --max-retries 3 \
-  --top-ports 1000 \
-  -oX open-ports.xml \
-  -iL ips.txt
-```
-
-### 3. Service Scan (Detailed)
-```bash
-nmap -n -Pn -sV \
-  --version-intensity 2 \
-  -iL ips.txt \
-  -p <discovered-ports> \
-  -oA service_scan
-```
-
-### 4. Nuclei Scan
-```bash
-nuclei \
-  -list ips.txt \
-  -markdown-export nuclei/ \
-  -json-export nuclei/output.json
+# With coverage
+pytest --cov=. --cov-report=term-missing
 ```
 
 ## Contributing
 
-Improvements welcome! Key areas:
+Improvements welcome! Areas of interest:
 
 - IPv6 support
-- Custom nmap script support
-- Web dashboard for progress
-- Distributed scanning across multiple machines
-- Integration with other tools (masscan, etc.)
+- Custom nmap scripts
+- Distributed scanning
+- Web dashboard for progress monitoring
 
 ## License
 
@@ -362,6 +259,5 @@ Use responsibly and only on networks you have permission to scan.
 
 ## References
 
-- [Nmap Port Selection](https://nmap.org/book/performance-port-selection.html)
-- [Nmap Performance](https://nmap.org/book/man-performance.html)
+- [Nmap Performance Guide](https://nmap.org/book/man-performance.html)
 - [Nuclei Documentation](https://nuclei.projectdiscovery.io/)

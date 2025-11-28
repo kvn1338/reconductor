@@ -31,6 +31,8 @@ class ScanStage(Enum):
     NUCLEI_COMPLETE = "nuclei_complete"
     NUCLEI_FAILED = "nuclei_failed"
     COMPLETE = "complete"
+    COMPLETE_HOSTS_ONLY = "complete_hosts_only"  # Completed in hosts-only mode
+    COMPLETE_PORTS_ONLY = "complete_ports_only"  # Completed in ports-only mode
     FAILED = "failed"
 
 
@@ -206,8 +208,15 @@ class ScanState:
         elif stage == ScanStage.SERVICE_SCAN:
             ready = self.get_targets_by_stage(ScanStage.PORT_DISCOVERY_COMPLETE)
         elif stage == ScanStage.NUCLEI_SCAN:
-            # Nuclei runs after port discovery (needs IP:PORT combinations)
-            ready = self.get_targets_by_stage(ScanStage.PORT_DISCOVERY_COMPLETE)
+            # Nuclei runs AFTER service scan completes to avoid interference
+            # Running nuclei during nmap -sV causes timing issues and false negatives
+            # Only queue targets that have finished service scan and haven't started nuclei
+            service_complete = self.get_targets_by_stage(
+                ScanStage.SERVICE_SCAN_COMPLETE
+            )
+            ready = [
+                t for t in service_complete if self.targets[t].nuclei_status is None
+            ]
 
         # Filter out already-queued targets to prevent duplicates
         return [t for t in ready if t not in self._queued_targets]
@@ -231,6 +240,8 @@ class ScanState:
         # Terminal stages
         if stage in [
             ScanStage.COMPLETE.value,
+            ScanStage.COMPLETE_HOSTS_ONLY.value,
+            ScanStage.COMPLETE_PORTS_ONLY.value,
             ScanStage.FAILED.value,
             ScanStage.NO_HOSTS_FOUND.value,
             ScanStage.NO_PORTS_FOUND.value,
@@ -278,7 +289,11 @@ class ScanState:
             stage = state.stage
             stats["by_stage"][stage] = stats["by_stage"].get(stage, 0) + 1
 
-            if stage == ScanStage.COMPLETE.value:
+            if stage in [
+                ScanStage.COMPLETE.value,
+                ScanStage.COMPLETE_HOSTS_ONLY.value,
+                ScanStage.COMPLETE_PORTS_ONLY.value,
+            ]:
                 stats["completed"] += 1
             elif stage == ScanStage.FAILED.value:
                 stats["failed"] += 1
@@ -318,3 +333,75 @@ class ScanState:
             for status, count in sorted(stats["nuclei_status"].items()):
                 print(f"  {status}: {count}")
         print("=" * 60 + "\n")
+
+    def get_scan_summary(self) -> Dict:
+        """
+        Get detailed scan summary with host/port counts and timing.
+
+        Returns:
+            Dictionary with summary statistics
+        """
+        summary = {
+            "total_targets": len(self.targets),
+            "total_hosts": 0,
+            "total_ports": 0,
+            "hosts_with_ports": 0,
+            "duration": None,
+            "start_time": None,
+            "end_time": None,
+        }
+
+        # Count hosts and ports
+        for target_state in self.targets.values():
+            if target_state.live_hosts:
+                summary["total_hosts"] += len(target_state.live_hosts)
+
+            if target_state.open_ports:
+                # Count ports (format: "22,80,443")
+                port_count = len(target_state.open_ports.split(","))
+                summary["total_ports"] += port_count
+                summary["hosts_with_ports"] += 1
+
+        # Calculate duration
+        if self.metadata.get("created_at"):
+            from datetime import datetime
+
+            try:
+                start = datetime.fromisoformat(self.metadata["created_at"])
+                summary["start_time"] = start
+
+                if self.metadata.get("last_updated"):
+                    end = datetime.fromisoformat(self.metadata["last_updated"])
+                    summary["end_time"] = end
+                    summary["duration"] = (end - start).total_seconds()
+            except:
+                pass
+
+        return summary
+
+    def print_scan_summary(self):
+        """Print detailed scan summary with host/port counts"""
+        summary = self.get_scan_summary()
+        stats = self.get_statistics()
+
+        print("\n" + "=" * 70)
+        print("SCAN SUMMARY")
+        print("=" * 70)
+        print(f"Scanned {summary['total_targets']} target(s)")
+        print(f"Found {summary['total_hosts']} live host(s)")
+        print(
+            f"Found {summary['total_ports']} open port(s) across {summary['hosts_with_ports']} host(s)"
+        )
+
+        if summary["duration"] is not None:
+            duration_min = int(summary["duration"] / 60)
+            duration_sec = int(summary["duration"] % 60)
+            print(f"Duration: {duration_min}m {duration_sec}s")
+
+        print(
+            f"\nResults: ✅ {stats['completed']} complete | "
+            f"❌ {stats['failed']} failed | "
+            f"⚠️  {stats['no_hosts']} no hosts | "
+            f"⚠️  {stats['no_ports']} no ports"
+        )
+        print("=" * 70 + "\n")

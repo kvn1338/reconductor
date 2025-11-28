@@ -13,6 +13,7 @@ from config import (
     NMAP_PORT_DISCOVERY_TEMPLATE,
     NMAP_SERVICE_SCAN_TEMPLATE,
     NUCLEI_SCAN_TEMPLATE,
+    NUCLEI_SCAN_URLS_TEMPLATE,
     ScanConfig,
 )
 from state import ScanStage, ScanState
@@ -140,7 +141,7 @@ class NmapWorker(ScanWorker):
 
         # If hosts-only mode, mark target as complete
         if self.config.hosts_only:
-            self.state.update_stage(target, ScanStage.COMPLETE)
+            self.state.update_stage(target, ScanStage.COMPLETE_HOSTS_ONLY)
             print(f"[{target}] Hosts-only mode: Marking complete")
 
     async def _do_port_discovery(self, target: str):
@@ -211,7 +212,7 @@ class NmapWorker(ScanWorker):
 
         # If ports-only mode, mark target as complete
         if self.config.ports_only:
-            self.state.update_stage(target, ScanStage.COMPLETE)
+            self.state.update_stage(target, ScanStage.COMPLETE_PORTS_ONLY)
             print(f"[{target}] Ports-only mode: Marking complete")
 
     async def _do_service_scan(self, target: str):
@@ -330,8 +331,6 @@ class NucleiWorker(ScanWorker):
         Path(nuclei_dir).mkdir(parents=True, exist_ok=True)
 
         # Use IP:PORT combinations for more targeted nuclei scanning
-        from config import NUCLEI_SCAN_URLS_TEMPLATE
-
         cmd = format_command(
             NUCLEI_SCAN_URLS_TEMPLATE,
             urls_file=urls_file,
@@ -422,6 +421,11 @@ class ScanOrchestrator:
         """Main orchestration loop - feeds queues based on state"""
         print("Orchestration loop started")
 
+        import time
+
+        last_progress_time = time.time()
+        progress_interval = 30  # seconds
+
         while True:
             # Check if all targets are complete or failed
             incomplete = self.state.get_incomplete_targets()
@@ -434,8 +438,8 @@ class ScanOrchestrator:
                 ScanStage.HOST_DISCOVERY
             )
             for target in pending_host_discovery:
-                await self.nmap_queue.put({"target": target, "stage": "host_discovery"})
                 self.state.mark_queued(target)
+                await self.nmap_queue.put({"target": target, "stage": "host_discovery"})
 
             # Only queue further stages if not in hosts-only mode
             if not self.config.hosts_only:
@@ -444,10 +448,10 @@ class ScanOrchestrator:
                     ScanStage.PORT_DISCOVERY
                 )
                 for target in ready_for_port_discovery:
+                    self.state.mark_queued(target)
                     await self.nmap_queue.put(
                         {"target": target, "stage": "port_discovery"}
                     )
-                    self.state.mark_queued(target)
 
             # Only queue service scans and nuclei if not in ports-only or hosts-only mode
             if not self.config.ports_only and not self.config.hosts_only:
@@ -456,25 +460,73 @@ class ScanOrchestrator:
                     ScanStage.SERVICE_SCAN
                 )
                 for target in ready_for_service_scan:
+                    self.state.mark_queued(target)
                     await self.nmap_queue.put(
                         {"target": target, "stage": "service_scan"}
                     )
-                    self.state.mark_queued(target)
 
                 # Feed nuclei queue (can run as soon as port discovery is complete)
                 ready_for_nuclei = self.state.get_targets_ready_for_stage(
                     ScanStage.NUCLEI_SCAN
                 )
                 for target in ready_for_nuclei:
-                    await self.nuclei_queue.put({"target": target})
                     self.state.mark_queued(target)
                     # Mark as queued, NOT complete - nuclei will update status when done
                     self.state.set_nuclei_status(target, ScanStage.NUCLEI_QUEUED.value)
+                    await self.nuclei_queue.put({"target": target})
+
+            # Print progress summary periodically
+            current_time = time.time()
+            if current_time - last_progress_time >= progress_interval:
+                self._print_progress()
+                last_progress_time = current_time
 
             # Wait a bit before checking again
             await asyncio.sleep(2)
 
         print("Orchestration loop finished")
+
+    def _print_progress(self):
+        """Print current progress to console"""
+        stats = self.state.get_statistics()
+
+        print("\n" + "=" * 70)
+        print(
+            f"📊 PROGRESS: {stats['completed']}/{stats['total']} complete | "
+            f"⚙️  In Progress: {stats['in_progress']} | "
+            f"❌ Failed: {stats['failed']}"
+        )
+
+        # Show stage breakdown
+        stage_counts = []
+        if stats["by_stage"].get("host_discovery", 0) > 0:
+            stage_counts.append(
+                f"🔍 Discovering: {stats['by_stage']['host_discovery']}"
+            )
+        if stats["by_stage"].get("port_discovery", 0) > 0:
+            stage_counts.append(f"🔎 Port Scan: {stats['by_stage']['port_discovery']}")
+        if stats["by_stage"].get("service_scan", 0) > 0:
+            stage_counts.append(f"🔬 Service Scan: {stats['by_stage']['service_scan']}")
+
+        # Show nuclei status
+        nuclei_counts = []
+        if stats["nuclei_status"].get("nuclei_queued", 0) > 0:
+            nuclei_counts.append(f"Queued: {stats['nuclei_status']['nuclei_queued']}")
+        if stats["nuclei_status"].get("nuclei_running", 0) > 0:
+            nuclei_counts.append(f"Running: {stats['nuclei_status']['nuclei_running']}")
+        if stats["nuclei_status"].get("nuclei_complete", 0) > 0:
+            nuclei_counts.append(f"✅ {stats['nuclei_status']['nuclei_complete']}")
+
+        if stage_counts:
+            print(f"   Stages: {' | '.join(stage_counts)}")
+        if nuclei_counts:
+            print(f"   🎯 Nuclei: {' | '.join(nuclei_counts)}")
+
+        # Show queue sizes
+        print(
+            f"   Queues: Nmap={self.nmap_queue.qsize()} | Nuclei={self.nuclei_queue.qsize()}"
+        )
+        print("=" * 70)
 
     def get_progress(self) -> dict:
         """Get current progress statistics"""
