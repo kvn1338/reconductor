@@ -1,0 +1,36 @@
+# reconductor Example Targets File
+#
+# Format: One IP address or CIDR subnet per line
+# Comments (lines starting with #) are ignored
+# Empty lines are ignored
+#
+# Note: Subnets larger than /24 will be automatically split into /24 chunks
+#       for better parallelization and progress tracking
+
+# Single IP addresses
+# 192.168.1.1
+# 10.0.0.1
+
+# /24 subnets (256 addresses, used as-is)
+# 192.168.1.0/24
+# 10.0.0.0/24
+
+# Larger subnets (will be split into /24s)
+# 10.0.0.0/20    # Will become 16 /24 subnets
+# 172.16.0.0/16  # Will become 256 /24 subnets
+# 10.159.111.0/20
+
+# Real-world examples:
+# Internal network scan
+# 10.10.0.0/16
+
+# DMZ scan
+# 192.168.100.0/24
+
+# VPN range
+# 172.16.50.0/24
+
+# Cloud subnet
+# 10.200.0.0/20
+
+# Add your targets below:
